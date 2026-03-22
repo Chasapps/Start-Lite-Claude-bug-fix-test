@@ -1081,69 +1081,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // SECTION 24: CONVERT PDF → CSV DOWNLOAD
 // ============================================================================
 
-(function () {
-  const convertBtn = document.getElementById('convertPdfBtn');
-  const convertInput = document.getElementById('pdfConvertInput');
-  if (!convertBtn || !convertInput) return;
-
-  convertBtn.addEventListener('click', () => convertInput.click());
-
-  convertInput.addEventListener('change', async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    convertInput.value = '';
-    try {
-      const buffer = new Uint8Array(await file.arrayBuffer());
-      if (!window.pdfjsLib) { alert('PDF.js not loaded'); return; }
-      const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-      let text = '';
-      for (let p = 1; p <= pdf.numPages; p++) {
-        const page = await pdf.getPage(p);
-        const content = await page.getTextContent();
-        text += content.items.map(it => it.str).join('\n') + '\n';
-      }
-      const txns = extractWestpacStatement(text);
-      if (!txns.length) { alert('No transactions found in PDF'); return; }
-      // Build CSV matching SpendLite column layout (col 2=date, col 5=debit, col 9=description)
-      const header = ',,Effective Date,,,Debit Amount,,,,Long Description';
-      const dataRows = txns.map(t => `,,${t.date},,,${t.amount.toFixed(2)},,,,${t.description}`);
-      const csv = [header, ...dataRows].join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = file.name.replace(/\.pdf$/i, '') + '_converted.csv';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(a.href);
-      showSaveStatus('\u2713 Converted ' + txns.length + ' transactions to CSV', 'success');
-    } catch (err) {
-      console.error('PDF to CSV conversion failed:', err);
-      alert('Failed to convert PDF: ' + err.message);
-    }
-  });
-})();
-
-// ============================================================================
-// WESTPAC PDF IMPORT (FINAL, SINGLE PATH, WORKING)
-// ============================================================================
-
-(function () {
-  const pdfInput = document.getElementById('pdfFile');
-  if (!pdfInput || !window.pdfjsLib) return;
-
-  pdfjsLib.disableWorker = true;
-
-  function normalisePdfDate(d) {
-    const [day, mon, year] = d.split(' ');
-    const months = {
-      Jan:'01', Feb:'02', Mar:'03', Apr:'04',
-      May:'05', Jun:'06', Jul:'07', Aug:'08',
-      Sep:'09', Oct:'10', Nov:'11', Dec:'12'
-    };
-    return `${year}-${months[mon]}-${day.padStart(2,'0')}`;
-  }
-
+// Shared parser — used by both the CSV-download block and the direct-import block.
 function extractWestpacStatement(text) {
 
   const months = {
@@ -1212,6 +1150,69 @@ function extractWestpacStatement(text) {
 
   return txns;
 }
+
+(function () {
+  const convertBtn = document.getElementById('convertPdfBtn');
+  const convertInput = document.getElementById('pdfConvertInput');
+  if (!convertBtn || !convertInput) return;
+
+  convertBtn.addEventListener('click', () => convertInput.click());
+
+  convertInput.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    convertInput.value = '';
+    try {
+      const buffer = new Uint8Array(await file.arrayBuffer());
+      if (!window.pdfjsLib) { alert('PDF.js not loaded'); return; }
+      const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+      let text = '';
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        text += content.items.map(it => it.str).join('\n') + '\n';
+      }
+      const txns = extractWestpacStatement(text);
+      if (!txns.length) { alert('No transactions found in PDF'); return; }
+      // Build CSV matching SpendLite column layout (col 2=date, col 5=debit, col 9=description)
+      const header = ',,Effective Date,,,Debit Amount,,,,Long Description';
+      const dataRows = txns.map(t => `,,${t.date},,,${t.amount.toFixed(2)},,,,${t.description}`);
+      const csv = [header, ...dataRows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = file.name.replace(/\.pdf$/i, '') + '_converted.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+      showSaveStatus('\u2713 Converted ' + txns.length + ' transactions to CSV', 'success');
+    } catch (err) {
+      console.error('PDF to CSV conversion failed:', err);
+      alert('Failed to convert PDF: ' + err.message);
+    }
+  });
+})();
+
+// ============================================================================
+// WESTPAC PDF IMPORT (FINAL, SINGLE PATH, WORKING)
+// ============================================================================
+
+(function () {
+  const pdfInput = document.getElementById('pdfFile');
+  if (!pdfInput || !window.pdfjsLib) return;
+
+  pdfjsLib.disableWorker = true;
+
+  function normalisePdfDate(d) {
+    const [day, mon, year] = d.split(' ');
+    const months = {
+      Jan:'01', Feb:'02', Mar:'03', Apr:'04',
+      May:'05', Jun:'06', Jul:'07', Aug:'08',
+      Sep:'09', Oct:'10', Nov:'11', Dec:'12'
+    };
+    return `${year}-${months[mon]}-${day.padStart(2,'0')}`;
+  }
 
   pdfInput.addEventListener('change', async (e) => {
     const file = e.target.files?.[0];
