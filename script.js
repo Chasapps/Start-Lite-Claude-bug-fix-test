@@ -1082,99 +1082,90 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================================================
 
 // Shared parser — used by both the CSV-download block and the direct-import block.
+// Parses the Westpac PDF statement format where each row has:
+//   Date: "19 Mar 2026", Description: "ENERGYAUSTRALIA PTY LT MELBOURNE AUS", Amount: "-$206.17"
 function extractWestpacStatement(text) {
 
-  const months = {
+  const monthNames = {
+    Jan:"January", Feb:"February", Mar:"March",    Apr:"April",
+    May:"May",     Jun:"June",     Jul:"July",      Aug:"August",
+    Sep:"September",Oct:"October", Nov:"November",  Dec:"December"
+  };
+  const monthNums = {
     Jan:"01",Feb:"02",Mar:"03",Apr:"04",
     May:"05",Jun:"06",Jul:"07",Aug:"08",
     Sep:"09",Oct:"10",Nov:"11",Dec:"12"
   };
+  const dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
-  const lines = text
-    .split(/\n+/)
-    .map(l => l.trim())
-    .filter(Boolean);
+  // The PDF text (from PDF.js) has each cell on its own line.
+  // Rows appear as: date line, description line(s), amount line — but the
+  // real PDF statement from Westpac puts everything space-separated on one line
+  // when viewed in the browser context (visible in the document object).
+  // We handle both: join all text and regex-scan for transaction blocks.
+  const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+  const full = lines.join(' ');
+
+  // Match pattern: date, description (non-greedy), then a dollar amount with optional leading -
+  // e.g. "19 Mar 2026 ENERGYAUSTRALIA PTY LT MELBOURNE AUS -$206.17"
+  const monRe = "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec";
+  const dateRe = new RegExp(
+    `(\\d{1,2}\\s+(?:${monRe})\\s+\\d{4})\\s+(.+?)\\s+(-?\\$[\\d,]+\\.\\d{2})(?=\\s+\\d{1,2}\\s+(?:${monRe})\\s+\\d{4}|\\s*$)`,
+    'g'
+  );
 
   const txns = [];
+  let m;
 
-  for (let i = 0; i < lines.length - 2; i++) {
+  while ((m = dateRe.exec(full)) !== null) {
+    const rawDate = m[1].trim();      // "19 Mar 2026"
+    let   desc    = m[2].trim();      // "ENERGYAUSTRALIA PTY LT MELBOURNE AUS"
+    const rawAmt  = m[3].trim();      // "-$206.17" or "$1804.00"
 
-    // --- DATE LINE ---
-    const dateMatch = lines[i].match(
-      /^(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2})$/
-    );
-    if (!dateMatch) continue;
+    const [dayStr, monAbbr, yearStr] = rawDate.split(/\s+/);
+    const day       = dayStr.padStart(2, '0');
+    const fullMonth = monthNames[monAbbr] || monAbbr;
+    const monthNum  = monthNums[monAbbr]  || '01';
+    const year      = yearStr;
 
-    // --- AMOUNT LINE ---
-    const amtMatch = lines[i+1].match(/^([\d,]+\.\d{2})(\s*-)?$/);
-    if (!amtMatch) continue;
+    // Day-of-week for the effective date string (matches real CSV format)
+    const dateObj = new Date(parseInt(year), parseInt(monthNum)-1, parseInt(day));
+    const dowName = dayNames[dateObj.getDay()];
+    // e.g. "12:00am Thu 19 March, 2026"
+    const effectiveDate = `12:00am ${dowName} ${parseInt(day, 10)} ${fullMonth}, ${year}`;
 
-    const day = dateMatch[1].padStart(2,"0");
-    const month = months[dateMatch[2]];
-    const year = "20" + dateMatch[3];
+    const isWithdrawal = rawAmt.startsWith('-');
+    const amountNum = parseFloat(rawAmt.replace(/[^0-9.]/g, ''));
+    const debit  = isWithdrawal ? amountNum.toFixed(2) : "0.0";
+    const credit = isWithdrawal ? "0.0" : amountNum.toFixed(2);
 
-    let amount = parseAmount(amtMatch[1]);
-    if (amtMatch[2]) amount = -amount;
-
-    // --- MULTI-LINE DESCRIPTION FIX ---
-    let descParts = [];
-
-    for (let j = i + 2; j < i + 6 && j < lines.length; j++) {
-
-      const line = lines[j];
-
-      // stop if next transaction starts
-      if (/^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/.test(line)) {
-        break;
-      }
-
-      // stop if looks like amount line
-      if (/^[\d,]+\.\d{2}/.test(line)) {
-        break;
-      }
-
-      // keep only merchant-like lines
-      if (
-        /^[A-Z0-9*.\-\/&\s]{3,}$/.test(line) &&
-        !/^(payment|balance|date|closing|opening)/i.test(line)
-      ) {
-        descParts.push(line.trim());
-      }
-
-      if (descParts.length >= 2) break;
-    }
-
-    let desc = descParts.join(" ");
-
-    // --- CLEAN TEXT ---
+    // Clean description: strip trailing location noise and AUS suffix
     desc = desc
-      .replace(/\bAUS\b/gi,"")
-      .replace(/\bPYPL\b/gi,"")
-      .replace(/\bVISA\b/gi,"")
-      .replace(/\*/g,"")
-      .replace(/\s+/g," ")
+      .replace(/\s+AUS\s*$/i, '')
+      .replace(/\s+/g, ' ')
       .trim();
 
-    // --- FILTER JUNK ---
-    if (
-      /payment|amount|date|balance|closing|opening|years|months/i.test(desc)
-    ) {
-      continue;
-    }
+    // Skip page headers / statement boilerplate
+    if (/^(page|date|description|withdrawal|deposit|things you should know|this interim|current balance|account|copyright|statement covers)/i.test(desc)) continue;
+    if (!desc) continue;
 
-    if (!desc) desc = "Imported Transaction";
+    // Long description matches CSV style: "VISA-ENERGYAUSTRALIA PTY LT MELBOURNE"
+    const longDesc = `VISA-${desc.toUpperCase()}`;
 
     txns.push({
-      date:`${year}-${month}-${day}`,
-      amount:Math.abs(amount),
-      description:desc
+      date: `${year}-${monthNum}-${day}`,
+      amount: amountNum,
+      debit,
+      credit,
+      effectiveDate,
+      longDesc,
+      isWithdrawal
     });
-
-    i += 2;
   }
 
   return txns;
 }
+
 (function () {
   const convertBtn = document.getElementById('convertPdfBtn');
   const convertInput = document.getElementById('pdfConvertInput');
@@ -1198,9 +1189,28 @@ function extractWestpacStatement(text) {
       }
       const txns = extractWestpacStatement(text);
       if (!txns.length) { alert('No transactions found in PDF'); return; }
-      // Build CSV matching SpendLite column layout (col 2=date, col 5=debit, col 9=description)
-      const header = ',,Effective Date,,,Debit Amount,,,,Long Description';
-      const dataRows = txns.map(t => `,,${t.date},,,${t.amount.toFixed(2)},,,,${t.description}`);
+      // Build CSV matching the real Westpac CSV export format (11 columns, all quoted)
+      // Columns: Account number, Transaction type, Effective date, Create date, Reference no,
+      //          Debit amount, Credit amount, Balance after transfer, Description, Long description, Cheque number
+      const q = v => `"${String(v).replace(/"/g, '""')}"`;
+      const header = [
+        'Account number','Transaction type','Effective date','Create date',
+        'Reference no','Debit amount','Credit amount','Balance after transfer',
+        'Description','Long description','Cheque number'
+      ].map(q).join(',');
+      const dataRows = txns.map(t => [
+        q('02336038'),       // Account number (generic — not in PDF)
+        q('VISA ONLY'),      // Transaction type
+        q(t.effectiveDate),  // Effective date  e.g. "12:00am Thu 19 March, 2026"
+        q(t.effectiveDate),  // Create date (same — not separately available in PDF)
+        q(''),               // Reference no
+        q(t.debit),          // Debit amount
+        q(t.credit),         // Credit amount
+        q('0.0'),            // Balance after transfer (not in PDF)
+        q(''),               // Description (short — not in PDF)
+        q(t.longDesc),       // Long description  e.g. "VISA-ENERGYAUSTRALIA PTY LT..."
+        q('0')               // Cheque number
+      ].join(','));
       const csv = [header, ...dataRows].join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const a = document.createElement('a');
@@ -1265,8 +1275,9 @@ if (!txns.length) {
 }
 
       CURRENT_TXNS = txns.map(t => ({
-      ...t,
-        amount: Math.abs(t.amount)
+        date: t.date,
+        amount: Math.abs(t.amount),
+        description: t.longDesc   // use long description for in-app display/matching
       }));
 
       saveTxnsToLocalStorage();
