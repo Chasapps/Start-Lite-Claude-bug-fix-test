@@ -1099,14 +1099,13 @@ function extractWestpacStatement(text) {
 
   for (let i = 0; i < lines.length - 2; i++) {
 
-    // detect date line
+    // --- DATE LINE ---
     const dateMatch = lines[i].match(
       /^(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2})$/
     );
-
     if (!dateMatch) continue;
 
-    // detect amount line
+    // --- AMOUNT LINE ---
     const amtMatch = lines[i+1].match(/^([\d,]+\.\d{2})(\s*-)?$/);
     if (!amtMatch) continue;
 
@@ -1117,10 +1116,37 @@ function extractWestpacStatement(text) {
     let amount = parseAmount(amtMatch[1]);
     if (amtMatch[2]) amount = -amount;
 
-    // merchant line
-    let desc = lines[i+2] || "";
+    // --- MULTI-LINE DESCRIPTION FIX ---
+    let descParts = [];
 
-    // clean merchant text
+    for (let j = i + 2; j < i + 6 && j < lines.length; j++) {
+
+      const line = lines[j];
+
+      // stop if next transaction starts
+      if (/^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/.test(line)) {
+        break;
+      }
+
+      // stop if looks like amount line
+      if (/^[\d,]+\.\d{2}/.test(line)) {
+        break;
+      }
+
+      // keep only merchant-like lines
+      if (
+        /^[A-Z0-9*.\-\/&\s]{3,}$/.test(line) &&
+        !/^(payment|balance|date|closing|opening)/i.test(line)
+      ) {
+        descParts.push(line.trim());
+      }
+
+      if (descParts.length >= 2) break;
+    }
+
+    let desc = descParts.join(" ");
+
+    // --- CLEAN TEXT ---
     desc = desc
       .replace(/\bAUS\b/gi,"")
       .replace(/\bPYPL\b/gi,"")
@@ -1129,9 +1155,8 @@ function extractWestpacStatement(text) {
       .replace(/\s+/g," ")
       .trim();
 
-    // ignore statement junk
+    // --- FILTER JUNK ---
     if (
-      amount > 2000 ||
       /payment|amount|date|balance|closing|opening|years|months/i.test(desc)
     ) {
       continue;
@@ -1145,12 +1170,11 @@ function extractWestpacStatement(text) {
       description:desc
     });
 
-    i += 2; // skip amount + merchant lines
+    i += 2;
   }
 
   return txns;
 }
-
 (function () {
   const convertBtn = document.getElementById('convertPdfBtn');
   const convertInput = document.getElementById('pdfConvertInput');
