@@ -414,9 +414,13 @@ function categorise(txns, rules) {
     for (const r of rules) {
       if (matchesKeyword(descLower, r.keyword)) { matched = r.category; }
     }
-    if (matched && String(matched).toUpperCase() === "PETROL" && amount <= 2) matched = "COFFEE";
-    t.category = matched || "UNCATEGORISED";
+   if (/7[\s-]?eleven/i.test(descLower)) {
+      if (amount <= 1.50) {
+        matched = "COFFEE";
+        } else {
+    matched = "PETROL";
   }
+
 }
 
 // ============================================================================
