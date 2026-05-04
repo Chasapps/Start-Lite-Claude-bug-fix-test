@@ -410,19 +410,29 @@ function categorise(txns, rules) {
   for (const t of txns) {
     const descLower = String(t.desc || t.description || "").toLowerCase();
     const amount = Math.abs(Number(t.amount || t.debit || 0));
+
     let matched = null;
+
+    // Apply rules first
     for (const r of rules) {
-      if (matchesKeyword(descLower, r.keyword)) { matched = r.category; }
+      if (matchesKeyword(descLower, r.keyword)) {
+        matched = r.category;
+      }
     }
-   if (/7[\s-]?eleven/i.test(descLower)) {
+
+    // 7-Eleven smart split (overrides rules)
+    if (/7[\s-]?eleven/i.test(descLower)) {
       if (amount <= 1.50) {
         matched = "COFFEE";
-        } else {
-    matched = "PETROL";
+      } else {
+        matched = "PETROL";
+      }
+    }
+
+    // Final assignment (important!)
+    t.category = matched || "UNCATEGORISED";
   }
-
 }
-
 // ============================================================================
 // SECTION 9: CATEGORY TOTALS
 // ============================================================================
