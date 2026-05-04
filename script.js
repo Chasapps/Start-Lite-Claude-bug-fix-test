@@ -436,16 +436,16 @@ function categorise(txns, rules) {
 
     // 7-Eleven smart split (overrides rules)
     if (/7[\s-]?eleven/i.test(descLower)) {
-      if (amount <= 1.50) {
+      if (amount <= 3.00) {
         matched = "COFFEE";
       } else {
         matched = "PETROL";
       }
     }
 
-    // United smart split — $1 or under is a coffee, otherwise petrol
+    // United smart split — $3 or under is a coffee, otherwise petrol
     if (/united/i.test(descLower)) {
-      if (amount <= 1.00) {
+      if (amount <= 3.00) {
         matched = "COFFEE";
       } else {
         matched = "PETROL";
