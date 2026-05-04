@@ -508,6 +508,9 @@ function renderCategoryTotals(txns) {
       updateFilterUI();
       CURRENT_PAGE = 1;
       renderTransactionsTable();
+      // Jump to transactions section
+      const txnTable = document.getElementById('transactionsTable');
+      if (txnTable) txnTable.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
 }
