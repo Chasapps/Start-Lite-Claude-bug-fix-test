@@ -286,6 +286,8 @@ function loadCsvText(csvText) {
     headers.find(h => /^description$/i.test(h)) ||
     headers[9];
 
+  const typeField = headers.find(h => /transaction type/i.test(h)) || headers[1];
+
   const txns = [];
 
   for (const r of rows) {
@@ -295,6 +297,10 @@ function loadCsvText(csvText) {
     const debit = parseAmount(r[debitField]);
     const credit = parseAmount(r[creditField]);
     const longDesc = (r[descField] || '').trim();
+    const txnType = (r[typeField] || '').trim();
+
+    // Skip VISA payment rows (card repayments, not expenses)
+    if (/visa\s*payment/i.test(longDesc) || /visa\s*payment/i.test(txnType)) continue;
 
     // Use debit if present, otherwise treat credit as a negative (income/refund)
     const amount = debit !== 0 ? debit : (credit !== 0 ? -credit : 0);
@@ -513,7 +519,6 @@ function renderMonthTotals() {
     const label = friendlyMonthOrAll(MONTH_FILTER);
     const cat = CURRENT_FILTER ? ` + category "${CURRENT_FILTER}"` : "";
     el.innerHTML = `Showing <span class="badge">${count}</span> transactions for <strong>${label}${cat}</strong> · ` +
-                   `Debit: <strong>$${debit.toFixed(2)}</strong> · ` +
                    `Credit: <strong>$${credit.toFixed(2)}</strong> · ` +
                    `Net: <strong>$${net.toFixed(2)}</strong>`;
   }
@@ -1310,7 +1315,9 @@ if (!txns.length) {
   return;
 }
 
-      CURRENT_TXNS = txns.map(t => ({
+      CURRENT_TXNS = txns
+        .filter(t => !/visa\s*payment/i.test(t.longDesc))
+        .map(t => ({
         date: t.date,
         amount: Math.abs(t.amount),
         description: t.longDesc   // use long description for in-app display/matching
