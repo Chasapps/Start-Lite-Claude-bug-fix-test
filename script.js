@@ -302,10 +302,13 @@ function loadCsvText(csvText) {
     // Skip VISA payment rows (card repayments, not expenses)
     if (/visa\s*payment/i.test(longDesc) || /visa\s*payment/i.test(txnType)) continue;
 
-    // Use debit if present, otherwise treat credit as a negative (income/refund)
-    const amount = debit !== 0 ? debit : (credit !== 0 ? -credit : 0);
+    // Skip deposits/credits — only track spending (debit rows)
+    if (credit !== 0 && debit === 0) continue;
 
-    if ((effectiveDate || longDesc) && (debit !== 0 || credit !== 0)) {
+    // Use debit amount
+    const amount = debit;
+
+    if ((effectiveDate || longDesc) && debit !== 0) {
       txns.push({
         date: effectiveDate,
         amount,
@@ -1317,11 +1320,12 @@ if (!txns.length) {
 
       CURRENT_TXNS = txns
         .filter(t => !/visa\s*payment/i.test(t.longDesc))
+        .filter(t => t.credit === 0)   // ignore deposits/credits
         .map(t => ({
-        date: t.date,
-        amount: Math.abs(t.amount),
-        description: t.longDesc   // use long description for in-app display/matching
-      }));
+          date: t.date,
+          amount: Math.abs(t.amount),
+          description: t.longDesc
+        }));
 
       saveTxnsToLocalStorage();
       rebuildMonthDropdown();
