@@ -546,6 +546,8 @@ function applyRulesAndRender({keepPage = false} = {}) {
   if (!keepPage) CURRENT_PAGE = 1;
   CURRENT_RULES = parseRules(document.getElementById('rulesBox').value);
   try { localStorage.setItem(LS_KEYS.RULES, document.getElementById('rulesBox').value); } catch {}
+  // Strip any deposits/credits regardless of how they got in (CSV, PDF, or localStorage restore)
+  CURRENT_TXNS = CURRENT_TXNS.filter(t => t.amount > 0);
   // Categorise ALL transactions so switching months doesn't lose categories
   categorise(CURRENT_TXNS, CURRENT_RULES);
   const txns = monthFilteredTxns();
