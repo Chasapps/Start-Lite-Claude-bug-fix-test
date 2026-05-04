@@ -280,6 +280,7 @@ function loadCsvText(csvText) {
   // Detect columns dynamically
   const dateField = headers.find(h => /effective date/i.test(h)) || headers[2];
   const debitField = headers.find(h => /debit amount/i.test(h)) || headers[5];
+  const creditField = headers.find(h => /credit amount/i.test(h)) || headers[6];
   const descField =
     headers.find(h => /long description/i.test(h)) ||
     headers.find(h => /^description$/i.test(h)) ||
@@ -292,12 +293,16 @@ function loadCsvText(csvText) {
 
     const effectiveDate = r[dateField] || '';
     const debit = parseAmount(r[debitField]);
+    const credit = parseAmount(r[creditField]);
     const longDesc = (r[descField] || '').trim();
 
-    if ((effectiveDate || longDesc) && Number.isFinite(debit) && debit !== 0) {
+    // Use debit if present, otherwise treat credit as a negative (income/refund)
+    const amount = debit !== 0 ? debit : (credit !== 0 ? -credit : 0);
+
+    if ((effectiveDate || longDesc) && (debit !== 0 || credit !== 0)) {
       txns.push({
         date: effectiveDate,
-        amount: debit,
+        amount,
         description: longDesc
       });
     }
@@ -957,7 +962,7 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
   updateFilterUI();
   CURRENT_PAGE = 1;
   renderTransactionsTable();
-  renderMonthTotals(monthFilteredTxns());
+  renderMonthTotals();
 });
 
 document.getElementById('clearMonthBtn').addEventListener('click', () => {
@@ -987,6 +992,17 @@ let RULES_CHANGED = false;
 window.addEventListener('DOMContentLoaded', async () => {
   let restored = false;
   const box = document.getElementById('rulesBox');
+
+  // Restore saved transactions first so they are available for rendering below
+  try {
+    const savedTxns = localStorage.getItem(LS_KEYS.TXNS_JSON);
+    if (savedTxns) {
+      const parsed = JSON.parse(savedTxns);
+      if (Array.isArray(parsed) && parsed.length) {
+        CURRENT_TXNS = parsed;
+      }
+    }
+  } catch {}
 
   try {
     const saved = localStorage.getItem(LS_KEYS.RULES);
@@ -1027,6 +1043,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   updateFilterUI();
   CURRENT_PAGE = 1;
   updateMonthBanner();
+
+  // Render restored transactions (if any) now that rules and filters are set
+  if (CURRENT_TXNS.length) {
+    rebuildMonthDropdown();
+    applyRulesAndRender();
+  }
 });
 
 document.addEventListener('DOMContentLoaded', () => {
