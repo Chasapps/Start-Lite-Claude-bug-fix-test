@@ -443,6 +443,15 @@ function categorise(txns, rules) {
       }
     }
 
+    // United smart split — $1 or under is a coffee, otherwise petrol
+    if (/united/i.test(descLower)) {
+      if (amount <= 1.00) {
+        matched = "COFFEE";
+      } else {
+        matched = "PETROL";
+      }
+    }
+
     // Final assignment (important!)
     t.category = matched || "UNCATEGORISED";
   }
