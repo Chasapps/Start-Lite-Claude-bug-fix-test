@@ -706,24 +706,23 @@ function exportTotals() {
   const txns = monthFilteredTxns();
   const { rows, grand } = computeCategoryTotals(txns);
   const label = friendlyMonthOrAll(MONTH_FILTER || getFirstTxnMonth(txns) || new Date());
-  const header = `SpendLite Category Totals (${label})`;
-  const catWidth = Math.max(8, ...rows.map(([cat]) => toTitleCase(cat).length), 'Category'.length);
-  const amtWidth = 12;
-  const pctWidth = 6;
+
+  const q = v => `"${String(v).replace(/"/g, '""')}"`;
   const lines = [];
-  lines.push(header);
-  lines.push('='.repeat(header.length));
-  lines.push('Category'.padEnd(catWidth) + ' ' + 'Amount'.padStart(amtWidth) + ' ' + '%'.padStart(pctWidth));
+  lines.push(`SpendLite Category Totals (${label})`);
+  lines.push('');
+  lines.push([q('Category'), q('Amount'), q('%')].join(','));
   for (const [cat, total] of rows) {
     const pct = grand ? (total / grand * 100) : 0;
-    lines.push(toTitleCase(cat).padEnd(catWidth) + ' ' + total.toFixed(2).padStart(amtWidth) + ' ' + (pct.toFixed(1) + '%').padStart(pctWidth));
+    lines.push([q(toTitleCase(cat)), q(total.toFixed(2)), q(pct.toFixed(1) + '%')].join(','));
   }
   lines.push('');
-  lines.push('TOTAL'.padEnd(catWidth) + ' ' + grand.toFixed(2).padStart(amtWidth) + ' ' + '100%'.padStart(pctWidth));
-  const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+  lines.push([q('TOTAL'), q(grand.toFixed(2)), q('100%')].join(','));
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `category_totals_${forFilename(label)}.txt`;
+  a.download = `category_totals_${forFilename(label)}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();
